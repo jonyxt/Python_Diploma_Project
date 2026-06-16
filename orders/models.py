@@ -334,6 +334,11 @@ class Contact(models.Model):
         verbose_name='Пользователь'
     )
 
+    phone = models.CharField(
+        max_length=20,
+        verbose_name='Телефон'
+    )
+
     city = models.CharField(
         max_length=255,
         verbose_name='Город'
@@ -370,11 +375,6 @@ class Contact(models.Model):
         verbose_name='Квартира'
     )
 
-    phone = models.CharField(
-        max_length=20,
-        verbose_name='Телефон'
-    )
-
     class Meta:
         verbose_name = 'Контакт'
         verbose_name_plural = 'Контакты'
@@ -403,7 +403,7 @@ class Order(models.Model):
         verbose_name='Пользователь'
     )
 
-    dt = models.DateTimeField(
+    created_at = models.DateTimeField(
         auto_now_add=True,
         verbose_name='Дата и время заказа'
     )
@@ -427,10 +427,10 @@ class Order(models.Model):
     class Meta:
         verbose_name = 'Заказ'
         verbose_name_plural = 'Заказы'
-        ordering = ['-dt']
+        ordering = ['-created_at']
 
     def __str__(self):
-        return f"Заказ #{self.id} от {self.dt.strftime('%Y-%m-%d %H:%M:%S')} ({self.get_status_display()})"
+        return f"Заказ #{self.id} от {self.created_at.strftime('%Y-%m-%d %H:%M:%S')} ({self.get_status_display()})"
 
 
 class OrderItem(models.Model):

@@ -42,7 +42,7 @@ def import_products_from_yaml(file_obj, user=None):
         user=user,
         defaults={
             'name': shop_name,
-            'state': True
+            'is_active': True
         }
     )
 
