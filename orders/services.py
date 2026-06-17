@@ -10,33 +10,45 @@ from orders.models import (
     ProductParameter
 )
 
-@transaction.atomic
-def import_products_from_yaml(file_obj, user=None):
+def read_yaml_file(file_obj):
     """
-    Импорт товаров из YAML файла.
+    Читает YAML-файл и возвращает текст.
+    """
+    try:
+        return file_obj.read().decode('utf-8')
+    except UnicodeDecodeError:
+        raise ValueError('Файл должен быть в кодировке UTF-8')
+
+
+@transaction.atomic
+def import_products_from_yaml_text(yaml_text, user=None):
+    """
+    Импорт товаров из YAML-текста.
     """
 
     try:
-        content = file_obj.read().decode('utf-8')
-        data = yaml.safe_load(content)
+        data = yaml.safe_load(yaml_text)
     except yaml.YAMLError:
         raise ValueError('Ошибка чтения YAML-файла')
-    except UnicodeDecodeError:
-        raise ValueError('Файл должен быть в кодировке UTF-8')
 
     if not data:
         raise ValueError('Файл пустой или имеет неверную структуру')
 
     shop_name = data.get('shop')
     categories_data = data.get('categories', [])
+    goods_data = data.get('goods', [])
+
     if not categories_data:
         raise ValueError('В файле отсутствует список категорий')
-    goods_data = data.get('goods', [])
+
     if not goods_data:
         raise ValueError('В файле отсутствует список товаров')
 
     if not shop_name:
         raise ValueError('В файле отсутствует название магазина')
+
+    if user is None:
+        raise ValueError('Для импорта необходимо указать поставщика')
 
     shop, _ = Shop.objects.get_or_create(
         user=user,
@@ -50,15 +62,12 @@ def import_products_from_yaml(file_obj, user=None):
         shop.name = shop_name
         shop.save(update_fields=['name'])
 
-    if user and shop.user is None:
-        shop.user = user
-        shop.save(update_fields=['user'])
-
     category_map = {}
 
     for category_data in categories_data:
         external_category_id = category_data.get('id')
         category_name = category_data.get('name')
+
         if external_category_id is None or not category_name:
             continue
 
@@ -120,3 +129,7 @@ def import_products_from_yaml(file_obj, user=None):
         'shop': shop.name,
         'imported_count': imported_count
     }
+
+def import_products_from_yaml(file_obj, user=None):
+    yaml_text = read_yaml_file(file_obj)
+    return import_products_from_yaml_text(yaml_text=yaml_text, user=user)

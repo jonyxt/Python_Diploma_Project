@@ -7,13 +7,12 @@ from rest_framework.authtoken.models import Token
 from django.db.models import Q
 from django.conf import settings
 from django.contrib.auth.tokens import default_token_generator
-from django.core.mail import send_mail
 from django.urls import reverse
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 
-
-from orders.services import import_products_from_yaml
+from orders.tasks import send_email, do_import
+from orders.services import read_yaml_file
 from .models import ProductInfo, Order, OrderItem, Contact, User
 from .serializers import (
     RegisterSerializer,
@@ -54,21 +53,25 @@ class PartnerImportView(APIView):
                             status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            result = import_products_from_yaml(file_obj=uploaded_file, user=request.user)
+            yaml_text = read_yaml_file(uploaded_file)
         except ValueError as error:
             return Response(
                 {'error': str(error)},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        task = do_import.delay(
+            yaml_text=yaml_text,
+            user_id=request.user.id
+        )
+
         return Response(
             {
-                'status': 'success',
-                'message': 'Товары успешно импортированы',
-                'shop': result['shop'],
-                'imported_count': result['imported_count']
+                'status': 'accepted',
+                'message': 'Импорт товаров запущен в фоне',
+                'task_id': task.id
             },
-            status=status.HTTP_201_CREATED
+            status=status.HTTP_202_ACCEPTED
         )
 
 class RegisterView(APIView):
@@ -101,7 +104,7 @@ class RegisterView(APIView):
                     }
                 )
             )
-            send_mail(
+            send_email.delay(
                 subject='Подтверждение регистрации',
                 message=(
                     f'Здравствуйте!\n\n'
@@ -110,8 +113,7 @@ class RegisterView(APIView):
                     f'Если вы не регистрировались, просто проигнорируйте это письмо.'
                 ),
                 from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[user.email],
-                fail_silently=False
+                recipient_list=[user.email]
             )
             return Response(
                 {
@@ -459,7 +461,7 @@ class OrderConfirmView(APIView):
             if contact.apartment:
                 delivery_address += f', кв. {contact.apartment}'
 
-            send_mail(
+            send_email.delay(
                 subject=f'Подтверждение заказа №{basket.id}',
                 message=(
                     f'Здравствуйте!\n\n'
@@ -471,11 +473,10 @@ class OrderConfirmView(APIView):
                     f'Телефон: {contact.phone}\n'
                 ),
                 from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[request.user.email],
-                fail_silently=False
+                recipient_list=[request.user.email]
             )
 
-            send_mail(
+            send_email.delay(
                 subject=f'Новый заказ №{basket.id}',
                 message=(
                     f'Создан новый заказ №{basket.id}.\n\n'
@@ -487,8 +488,7 @@ class OrderConfirmView(APIView):
                     f'Сумма заказа: {order_sum} руб.'
                 ),
                 from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[settings.ADMIN_EMAIL],
-                fail_silently=False,
+                recipient_list=[settings.ADMIN_EMAIL]
             )
 
             return Response(

@@ -1,0 +1,20 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+    <h1>Импорт товаров из YAML</h1>
+
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+
+        <fieldset class="module aligned">
+            {{ form.as_p }}
+        </fieldset>
+
+        <div class="submit-row">
+            <input type="submit" value="Запустить импорт" class="default">
+            <a href="{% url 'admin:orders_productinfo_changelist' %}">
+                Назад
+            </a>
+        </div>
+    </form>
+{% endblock %}

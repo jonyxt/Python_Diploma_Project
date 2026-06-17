@@ -1,6 +1,14 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.utils.html import format_html
+from django import forms
+from django.contrib import messages
+from django.http import HttpResponseRedirect
+from django.shortcuts import render
+from django.urls import path, reverse
+
+from orders.services import read_yaml_file
+from orders.tasks import do_import
 
 from .models import (
     User,
@@ -19,6 +27,16 @@ from .models import (
 admin.site.site_header = 'Администрирование склада'
 admin.site.site_title = 'Склад'
 admin.site.index_title = 'Панель управления закупками'
+
+
+class AdminImportForm(forms.Form):
+    supplier = forms.ModelChoiceField(
+        queryset=User.objects.filter(user_type='shop'),
+        label='Поставщик'
+    )
+    file = forms.FileField(
+        label='YAML-файл'
+    )
 
 
 class LowStockFilter(admin.SimpleListFilter):
@@ -338,6 +356,71 @@ class ProductInfoAdmin(admin.ModelAdmin):
             }
         )
     )
+
+    change_list_template = 'admin/orders/productinfo/change_list.html'
+
+    def get_urls(self):
+        urls = super().get_urls()
+
+        custom_urls = [
+            path(
+                'import-yaml/',
+                self.admin_site.admin_view(self.import_yaml_view),
+                name='orders_productinfo_import_yaml'
+            ),
+        ]
+
+        return custom_urls + urls
+
+    def import_yaml_view(self, request):
+        if request.method == 'POST':
+            form = AdminImportForm(request.POST, request.FILES)
+
+            if form.is_valid():
+                supplier = form.cleaned_data['supplier']
+                uploaded_file = form.cleaned_data['file']
+
+                if not uploaded_file.name.endswith(('.yaml', '.yml')):
+                    messages.error(
+                        request,
+                        'Неверный формат файла. Ожидается .yaml или .yml'
+                    )
+                    return HttpResponseRedirect(request.path)
+
+                try:
+                    yaml_text = read_yaml_file(uploaded_file)
+                except ValueError as error:
+                    messages.error(request, str(error))
+                    return HttpResponseRedirect(request.path)
+
+                task = do_import.delay(
+                    yaml_text=yaml_text,
+                    user_id=supplier.id
+                )
+
+                messages.success(
+                    request,
+                    f'Импорт запущен в Celery. Task ID: {task.id}'
+                )
+
+                return HttpResponseRedirect(
+                    reverse('admin:orders_productinfo_changelist')
+                )
+        else:
+            form = AdminImportForm()
+
+        context = {
+            **self.admin_site.each_context(request),
+            'title': 'Импорт товаров из YAML',
+            'form': form,
+            'opts': self.model._meta,
+        }
+
+        return render(
+            request,
+            'admin/orders/productinfo/import_yaml.html',
+            context
+        )
 
     @admin.display(description='Категория')
     def get_category(self, obj):
