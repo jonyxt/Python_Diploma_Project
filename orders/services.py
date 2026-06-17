@@ -1,5 +1,6 @@
 import yaml
 from django.db import transaction
+from pathlib import Path
 
 from orders.models import (
     Shop,
@@ -13,11 +14,24 @@ from orders.models import (
 def read_yaml_file(file_obj):
     """
     Читает YAML-файл и возвращает текст.
+    Поддерживает:
+    - Django UploadedFile из админки/API;
+    - pathlib.Path;
+    - обычный путь строкой.
     """
     try:
-        return file_obj.read().decode('utf-8')
-    except UnicodeDecodeError:
-        raise ValueError('Файл должен быть в кодировке UTF-8')
+        if isinstance(file_obj, (str, Path)):
+            return Path(file_obj).read_text(encoding="utf-8")
+
+        content = file_obj.read()
+
+        if isinstance(content, bytes):
+            return content.decode("utf-8")
+
+        return content
+
+    except Exception as exc:
+        raise ValueError(f"Не удалось прочитать YAML-файл: {exc}")
 
 
 @transaction.atomic
