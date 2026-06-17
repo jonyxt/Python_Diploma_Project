@@ -7,7 +7,8 @@ from orders.views import (
     ContactView,
     OrderConfirmView,
     OrderListView,
-    PartnerImportView
+    PartnerImportView,
+    ConfirmRegisterView
 )
 
 urlpatterns = [
@@ -19,4 +20,7 @@ urlpatterns = [
     path("contacts/", ContactView.as_view(), name="contacts"),
     path("order/confirm/", OrderConfirmView.as_view(), name="order-confirm"),
     path("orders/", OrderListView.as_view(), name="orders"),
+    path('user/register/confirm/<uidb64>/<token>/',
+         ConfirmRegisterView.as_view(),
+         name='user-register-confirm')
 ]

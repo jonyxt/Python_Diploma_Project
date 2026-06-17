@@ -31,6 +31,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
         user = User(**validated_data)
         user.username = validated_data['email']
+        user.is_active = False
         user.set_password(password)
         user.save()
 
@@ -49,9 +50,9 @@ class LoginSerializer(serializers.Serializer):
             if user:
                 data['user'] = user
             else:
-                raise serializers.ValidationError("Unable to log in with provided credentials.")
+                raise serializers.ValidationError("Неверный email или пароль. Возможно, email ещё не подтверждён")
         else:
-            raise serializers.ValidationError("Must include 'email' and 'password'.")
+            raise serializers.ValidationError("Необходимо указать email и password")
 
         return data
 
@@ -65,6 +66,7 @@ class ProductParameterSerializer(serializers.ModelSerializer):
 class ProductInfoSerializer(serializers.ModelSerializer):
     name = serializers.CharField(source='product.name')
     supplier = serializers.CharField(source='shop.name')
+    description = serializers.CharField(source='model')
     characteristics = ProductParameterSerializer(source='parameters', many=True, read_only=True)
 
     class Meta:
@@ -72,6 +74,7 @@ class ProductInfoSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'name',
+            'description',
             'supplier',
             'characteristics',
             'price',
@@ -106,13 +109,23 @@ class BasketItemSerializer(serializers.ModelSerializer):
 
 class BasketAddSerializer(serializers.Serializer):
     product_info = serializers.PrimaryKeyRelatedField(
-        queryset=ProductInfo.objects.all()
+        queryset=ProductInfo.objects.select_related('shop', 'product').all()
     )
     quantity = serializers.IntegerField(min_value=1)
 
     def validate(self, attrs):
         product_info = attrs['product_info']
         quantity = attrs['quantity']
+
+        if not product_info.shop.is_active:
+            raise serializers.ValidationError(
+                'Магазин не принимает заказы'
+            )
+
+        if product_info.quantity <= 0:
+            raise serializers.ValidationError(
+                'Товары отсутствуют на складе'
+            )
 
         if quantity > product_info.quantity:
             raise serializers.ValidationError("Запрошенное количество больше доступного остатка")
@@ -131,6 +144,9 @@ class ContactSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "phone",
+            'last_name',
+            'first_name',
+            'middle_name',
             "city",
             "street",
             "house",
@@ -139,6 +155,24 @@ class ContactSerializer(serializers.ModelSerializer):
             "apartment",
         ]
         read_only_fields = ["id"]
+
+    def validate_phone(self, value):
+        cleaned_value = value.strip()
+        if len(cleaned_value) < 7:
+            raise serializers.ValidationError(
+                'Телефон слишком короткий'
+            )
+        return cleaned_value
+
+    def validate(self, attrs):
+        required_fields = ['phone', 'city', 'street', 'house']
+        for field in required_fields:
+            value = attrs.get(field)
+            if not value or not str(value).strip():
+                raise serializers.ValidationError(
+                    f"Поле '{field}' не может быть пустым"
+                )
+        return attrs
 
 class OrderConfirmSerializer(serializers.Serializer):
     basket_id = serializers.IntegerField()
@@ -203,6 +237,7 @@ class OrderSerializer(serializers.ModelSerializer):
     date = serializers.DateTimeField(source='created_at', format='%Y-%m-%d %H:%M')
     sum = serializers.SerializerMethodField()
     items = OrderItemSerializer(many=True, read_only=True)
+    contact = ContactSerializer(read_only=True)
 
     class Meta:
         model = Order
@@ -211,6 +246,7 @@ class OrderSerializer(serializers.ModelSerializer):
             'date',
             'sum',
             'status',
+            'contact',
             'items'
         ]
 

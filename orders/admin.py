@@ -231,18 +231,20 @@ class OrderAdmin(admin.ModelAdmin):
     list_display = (
         'id',
         'user',
-        'dt',
+        'created_at',
         'status',
+        'contact',
     )
 
     list_filter = (
         'status',
-        'dt',
+        'created_at',
     )
 
     search_fields = (
         'user__email',
         'user__username',
+        'contact__phone',
     )
 
     inlines = [OrderItemInline]
@@ -276,6 +278,9 @@ class ContactAdmin(admin.ModelAdmin):
     list_display = (
         'id',
         'user',
+        'last_name',
+        'first_name',
+        'middle_name',
         'city',
         'street',
         'house',
@@ -285,6 +290,9 @@ class ContactAdmin(admin.ModelAdmin):
     search_fields = (
         'user__email',
         'user__username',
+        'last_name',
+        'first_name',
+        'middle_name',
         'city',
         'street',
         'house',

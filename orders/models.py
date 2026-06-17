@@ -105,7 +105,7 @@ class User(AbstractUser):
 
     is_active = models.BooleanField(
         _('active'),
-        default=True,
+        default=False,
         help_text=_(
             'Определяет, активен ли пользователь. '
             'Вместо удаления пользователя лучше снять этот флаг.'
@@ -337,6 +337,27 @@ class Contact(models.Model):
     phone = models.CharField(
         max_length=20,
         verbose_name='Телефон'
+    )
+
+    last_name = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name='Фамилия'
+    )
+
+    first_name = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name='Имя'
+    )
+
+    middle_name = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name='Отчество'
     )
 
     city = models.CharField(

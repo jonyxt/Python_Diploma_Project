@@ -5,9 +5,16 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.authtoken.models import Token
 from django.db.models import Q
+from django.conf import settings
+from django.contrib.auth.tokens import default_token_generator
+from django.core.mail import send_mail
+from django.urls import reverse
+from django.utils.encoding import force_bytes, force_str
+from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
+
 
 from orders.services import import_products_from_yaml
-from .models import ProductInfo, Order, OrderItem, Contact
+from .models import ProductInfo, Order, OrderItem, Contact, User
 from .serializers import (
     RegisterSerializer,
     LoginSerializer,
@@ -83,16 +90,82 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
-            token, created = Token.objects.get_or_create(user=user)
+            uid = urlsafe_base64_encode(force_bytes(user.pk))
+            token = default_token_generator.make_token(user)
+            confirm_url = request.build_absolute_uri(
+                reverse(
+                    'user-register-confirm',
+                    kwargs={
+                        'uidb64': uid,
+                        'token': token
+                    }
+                )
+            )
+            send_mail(
+                subject='Подтверждение регистрации',
+                message=(
+                    f'Здравствуйте!\n\n'
+                    f'Для подтверждения регистрации перейдите по ссылке:\n'
+                    f'{confirm_url}\n\n'
+                    f'Если вы не регистрировались, просто проигнорируйте это письмо.'
+                ),
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[user.email],
+                fail_silently=False
+            )
             return Response(
                 {
-                    'message': 'Пользователь успешно зарегистрирован',
-                    'user_id': user.id,
-                    'token': token.key
+                    'message': 'Пользователь зарегистрирован. Проверьте email для подтверждения регистрации.',
+                    'user_id': user.id
                 },
-                status=status.HTTP_201_CREATED)
+                status=status.HTTP_201_CREATED
+            )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class ConfirmRegisterView(APIView):
+    """
+    Подтверждение регистрации пользователя по ссылке из email.
+    """
+
+    permission_classes = [AllowAny]
+
+    def get(self, request, uidb64, token):
+        try:
+            uid = force_str(urlsafe_base64_decode(uidb64))
+            user = User.objects.get(pk=uid)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            return Response(
+                {
+                    'error': 'Некорректная ссылка подтверждения'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if user.is_active:
+            return Response(
+                {
+                    'message': 'Пользователь уже подтвержден'
+                },
+                status=status.HTTP_200_OK
+            )
+
+        if default_token_generator.check_token(user, token):
+            user.is_active = True
+            user.save(update_fields=['is_active'])
+            return Response (
+                {
+                    'message': 'Email успешно подтвержден. Теперь можно войти'
+                },
+                status=status.HTTP_200_OK
+            )
+
+        return Response (
+            {
+                'error': 'Ссылка подтверждения недействительна или устарела'
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
 class LoginView(APIView):
     """"
@@ -118,7 +191,8 @@ class LoginView(APIView):
                     'user_id': user.id,
                     'token': token.key
                 },
-                status=status.HTTP_200_OK)
+                status=status.HTTP_200_OK
+            )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -233,7 +307,10 @@ class BasketView(APIView):
 
             return Response(
                 {
-                    'message': 'Товар добавлен в корзину'
+                    'message': 'Товар добавлен в корзину',
+                    'basket_id': basket.id,
+                    'item_id': item.id,
+                    'quantity': item.quantity
                 },
                 status=status.HTTP_201_CREATED
             )
@@ -332,7 +409,7 @@ class OrderConfirmView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    def  post(self, request):
+    def post(self, request):
         serializer = OrderConfirmSerializer(
             data=request.data,
             context={
@@ -345,13 +422,81 @@ class OrderConfirmView(APIView):
             contact = serializer.validated_data['contact']
             basket.contact = contact
             basket.status = 'new'
-            basket.save()
+            basket.save(update_fields=['contact', 'status'])
+
+            order_items = basket.items.select_related(
+                'product_info',
+                'product_info__product',
+                'product_info__shop'
+            )
+
+            order_sum = sum(
+                item.product_info.price * item.quantity
+                for item in order_items
+            )
+
+            items_text = '\n'.join(
+                [
+                    (
+                        f'- {item.product_info.product.name} '
+                        f'({item.product_info.shop.name}) '
+                        f'x {item.quantity} — '
+                        f'{item.product_info.price * item.quantity} руб.'
+                    )
+                    for item in order_items
+                ]
+            )
+
+            delivery_address = (
+                f'{contact.city}, {contact.street}, д. {contact.house}'
+            )
+            if contact.structure:
+                delivery_address += f', корп. {contact.structure}'
+
+            if contact.building:
+                delivery_address += f', стр. {contact.building}'
+
+            if contact.apartment:
+                delivery_address += f', кв. {contact.apartment}'
+
+            send_mail(
+                subject=f'Подтверждение заказа №{basket.id}',
+                message=(
+                    f'Здравствуйте!\n\n'
+                    f'Ваш заказ №{basket.id} успешно создан.\n\n'
+                    f'Состав заказа:\n'
+                    f'{items_text}\n\n'
+                    f'Сумма заказа: {order_sum} руб.\n\n'
+                    f'Адрес доставки: {delivery_address}\n'
+                    f'Телефон: {contact.phone}\n'
+                ),
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[request.user.email],
+                fail_silently=False
+            )
+
+            send_mail(
+                subject=f'Новый заказ №{basket.id}',
+                message=(
+                    f'Создан новый заказ №{basket.id}.\n\n'
+                    f'Клиент: {request.user.email}\n'
+                    f'Телефон: {contact.phone}\n'
+                    f'Адрес доставки: {delivery_address}\n\n'
+                    f'Состав заказа:\n'
+                    f'{items_text}\n\n'
+                    f'Сумма заказа: {order_sum} руб.'
+                ),
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[settings.ADMIN_EMAIL],
+                fail_silently=False,
+            )
 
             return Response(
                 {
                     'message': 'Заказ подтвержден',
                     'order_id': basket.id,
-                    'status': basket.status
+                    'status': basket.status,
+                    'sum': order_sum
                 },
                 status=status.HTTP_200_OK
             )
@@ -371,6 +516,8 @@ class OrderListView(APIView):
             user=request.user
         ).exclude(
             status='basket'
+        ).select_related(
+            'contact'
         ).prefetch_related(
             'items',
             'items__product_info',
