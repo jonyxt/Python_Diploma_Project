@@ -15,7 +15,11 @@ from orders.views import (
     PartnerStateView,
     PartnerOrdersView,
     PasswordResetView,
-    PasswordResetConfirmView
+    PasswordResetConfirmView,
+    ProductDetailView,
+    OrderDetailView,
+    OrderStatusView,
+    PartnerExportView
 )
 
 urlpatterns = [
@@ -30,11 +34,18 @@ urlpatterns = [
     path("user/password_reset/confirm", PasswordResetConfirmView.as_view(),
          name="user-password-reset-confirm"),
     path("products", ProductListView.as_view(), name="products"),
+    path("products/<int:product_info_id>", ProductDetailView.as_view(),
+         name="product-detail",),
     path("basket", BasketView.as_view(), name="basket"),
     path("shops", ShopListView.as_view(), name="shops"),
     path("categories", CategoryListView.as_view(), name="categories"),
     path("order", OrderView.as_view(), name="order"),
+    path("order/<int:order_id>", OrderDetailView.as_view(),
+         name="order-detail",),
+    path("order/<int:order_id>/status", OrderStatusView.as_view(),
+         name="order-status",),
     path('partner/update', PartnerImportView.as_view(), name='partner-update'),
     path("partner/orders", PartnerOrdersView.as_view(), name="partner-orders"),
     path("partner/state", PartnerStateView.as_view(), name="partner-state"),
+    path("partner/export", PartnerExportView.as_view(), name="partner-export"),
 ]

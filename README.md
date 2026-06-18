@@ -96,6 +96,7 @@ DELETE /user/contact
 GET    /shops
 GET    /categories
 GET    /products
+GET    /products/<id>
 
 GET    /basket
 POST   /basket
@@ -104,8 +105,11 @@ DELETE /basket
 
 GET    /order
 POST   /order
+GET    /order/<id>
+POST   /order/<id>/status
 
 POST   /partner/update
+GET    /partner/export
 GET    /partner/state
 POST   /partner/state
 GET    /partner/orders
@@ -137,7 +141,7 @@ EMAIL_BACKEND=orders.email_backends.ReadableConsoleEmailBackend
 docker compose logs -f celery
 ```
 
-## Импорт прайса поставщика
+## Импорт и экспорт прайса поставщика
 
 Поставщик отправляет ссылку на YAML-файл:
 
@@ -152,6 +156,14 @@ url=https://raw.githubusercontent.com/netology-code/python-final-diplom/master/d
 ```
 
 Импорт запускается через Celery. Статус выполнения смотрите в логах `celery`.
+
+Экспорт текущего прайса поставщика доступен через endpoint:
+
+```text
+GET /api/v1/partner/export
+```
+
+Ответ возвращается как YAML-файл.
 
 Также импорт YAML доступен через Django Admin на странице товарных позиций. Для этого используются кастомные admin-шаблоны: `orders/templates/admin/orders/productinfo/change_list.html` и `orders/templates/admin/orders/productinfo/import_yaml.html`.
 
@@ -175,10 +187,10 @@ url=https://raw.githubusercontent.com/netology-code/python-final-diplom/master/d
 
 - `test_api_auth.py` проверяет регистрацию, подтверждение email, вход, просмотр и обновление профиля, сброс пароля.
 - `test_api_contacts.py` проверяет создание, получение, обновление и удаление контактов пользователя.
-- `test_api_products.py` проверяет публичные endpoint для списка товаров, магазинов и категорий.
+- `test_api_products.py` проверяет публичные endpoint для списка и деталей товаров, магазинов и категорий.
 - `test_api_basket.py` проверяет полный цикл работы с корзиной: добавление, просмотр, изменение количества и удаление товаров.
-- `test_api_orders.py` проверяет оформление корзины в заказ и получение списка заказов пользователя.
-- `test_api_partner.py` проверяет endpoint поставщика: обновление прайса, изменение статуса приема заказов и просмотр заказов магазина.
+- `test_api_orders.py` проверяет оформление корзины в заказ, получение списка заказов и детали заказа.
+- `test_api_partner.py` проверяет endpoint поставщика: обновление и экспорт прайса, изменение статуса приема заказов, просмотр заказов магазина и изменение статуса заказа.
 - `test_import.py` проверяет импорт товаров из YAML-файла на уровне сервисного слоя.
 - `test_tasks.py` проверяет Celery-задачи отправки email и импорта товаров.
 - `test_models.py` проверяет строковые представления основных моделей.

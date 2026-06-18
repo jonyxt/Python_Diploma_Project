@@ -79,3 +79,60 @@ def test_partner_update_starts_import_task(supplier_client, mocker):
     mocked_task.assert_called_once()
     assert mocked_task.call_args.kwargs["yaml_text"] == "shop: Test Shop"
     assert mocked_task.call_args.kwargs["user_id"]
+
+
+@pytest.mark.django_db
+def test_partner_can_update_order_status(
+    supplier_client,
+    user,
+    shop,
+    product_info,
+):
+    contact = Contact.objects.create(
+        user=user,
+        city="Moscow",
+        street="Test Street",
+        house="1",
+        phone="+79999999999",
+    )
+
+    order = Order.objects.create(
+        user=user,
+        contact=contact,
+        status="new",
+    )
+
+    OrderItem.objects.create(
+        order=order,
+        product_info=product_info,
+        quantity=1,
+    )
+
+    response = supplier_client.post(
+        reverse(
+            "order-status",
+            kwargs={"order_id": order.id}
+        ),
+        {"status": "confirmed"},
+    )
+
+    assert response.status_code == 200
+
+    order.refresh_from_db()
+
+    assert order.status == "confirmed"
+
+
+@pytest.mark.django_db
+def test_partner_export_returns_yaml(supplier_client, shop, product_info):
+    response = supplier_client.get(reverse("partner-export"))
+
+    assert response.status_code == 200
+    assert response["Content-Type"].startswith("application/x-yaml")
+    assert "attachment;" in response["Content-Disposition"]
+
+    content = response.content.decode("utf-8")
+
+    assert "shop: Test Shop" in content
+    assert "goods:" in content
+    assert "iPhone 15" in content

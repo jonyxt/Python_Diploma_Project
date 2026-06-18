@@ -1,5 +1,7 @@
-import json
 import re
+import json
+import yaml
+
 from urllib.error import URLError
 from urllib.request import urlopen
 
@@ -11,6 +13,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.authtoken.models import Token
 from django.db.models import Q
 from django.conf import settings
+from django.http import HttpResponse
 from django.contrib.auth.tokens import default_token_generator
 
 from orders.tasks import send_email, do_import
@@ -29,7 +32,8 @@ from .serializers import (
     UserDetailsSerializer,
     PasswordResetSerializer,
     PasswordResetConfirmSerializer,
-    RegisterConfirmSerializer
+    RegisterConfirmSerializer,
+    OrderStatusSerializer
 )
 
 
@@ -100,6 +104,90 @@ class PartnerImportView(APIView):
             },
             status=status.HTTP_202_ACCEPTED
         )
+
+
+class PartnerExportView(APIView):
+    """
+    Экспортирует товары текущего поставщика в YAML.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        """
+        Возвращает YAML-файл с категориями и товарами магазина поставщика.
+        """
+        if request.user.user_type != 'shop':
+            return Response(
+                {'error': 'Только поставщик может экспортировать прайс'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        try:
+            shop = request.user.shop
+        except Shop.DoesNotExist:
+            return Response(
+                {'error': 'Магазин поставщика не найден'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        categories = shop.categories.all().order_by('id')
+        products_info = ProductInfo.objects.filter(
+            shop=shop
+        ).select_related(
+            'product',
+            'product__category'
+        ).prefetch_related(
+            'parameters',
+            'parameters__parameter'
+        ).order_by('external_id', 'id')
+
+        data = {
+            'shop': shop.name,
+            'categories': [
+                {
+                    'id': category.id,
+                    'name': category.name,
+                }
+                for category in categories
+            ],
+            'goods': [],
+        }
+
+        for product_info in products_info:
+            parameters = {
+                product_parameter.parameter.name: product_parameter.value
+                for product_parameter in product_info.parameters.all()
+            }
+
+            data['goods'].append(
+                {
+                    'id': product_info.external_id or product_info.id,
+                    'category': product_info.product.category_id,
+                    'name': product_info.product.name,
+                    'model': product_info.model,
+                    'price': product_info.price,
+                    'price_rrc': product_info.price_rrc,
+                    'quantity': product_info.quantity,
+                    'parameters': parameters,
+                }
+            )
+
+        yaml_text = yaml.safe_dump(
+            data,
+            allow_unicode=True,
+            sort_keys=False
+        )
+
+        response = HttpResponse(
+            yaml_text,
+            content_type='application/x-yaml; charset=utf-8'
+        )
+        response['Content-Disposition'] = (
+            f'attachment; filename="{shop.name}_export.yaml"'
+        )
+
+        return response
 
 
 class PartnerStateView(APIView):
@@ -218,7 +306,7 @@ class PartnerOrdersView(APIView):
 
 class RegisterView(APIView):
     """
-    Показывает все оформленные заказы, где есть товары магазина поставщика.
+    Регистрирует нового пользователя и отправляет email для подтверждения.
     """
 
     permission_classes = [AllowAny]
@@ -461,6 +549,39 @@ class ProductListView(APIView):
             products = products.filter(product__category_id=category_id)
 
         serializer = ProductInfoSerializer(products, many=True)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class ProductDetailView(APIView):
+    """
+    Возвращает детальную информацию о товарной позиции.
+    """
+
+    permission_classes = [AllowAny]
+
+    def get(self, request, product_info_id):
+        """
+        Показывает товарную позицию активного магазина.
+        """
+        try:
+            product = ProductInfo.objects.select_related(
+                'product',
+                'shop'
+            ).prefetch_related(
+                'parameters__parameter'
+            ).get(
+                id=product_info_id,
+                shop__is_active=True,
+                quantity__gt=0
+            )
+        except ProductInfo.DoesNotExist:
+            return Response(
+                {'error': 'Товар не найден'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = ProductInfoSerializer(product)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -878,7 +999,7 @@ class OrderView(APIView):
 
     def post(self, request):
         """
-        Оформляет корзину в заказ.
+        Оформляет корзину в заказ и отправляет email клиенту и администратору
         """
         serializer = OrderCreateSerializer(
             data=request.data,
@@ -906,12 +1027,161 @@ class OrderView(APIView):
             for item in order_items
         )
 
+        items_text = '\n'.join(
+            [
+                (
+                    f'- {item.product_info.product.name} '
+                    f'({item.product_info.shop.name}) '
+                    f'x {item.quantity} - '
+                    f'{item.product_info.price * item.quantity} руб.'
+                )
+                for item in order_items
+            ]
+        )
+
+        delivery_address = (
+            f'{contact.city}, {contact.street}, д. {contact.house}'
+        )
+
+        if contact.structure:
+            delivery_address += f', корп. {contact.structure}'
+
+        if contact.building:
+            delivery_address += f', стр. {contact.building}'
+
+        if contact.apartment:
+            delivery_address += f', кв. {contact.apartment}'
+
+        send_email.delay(
+            subject=f'Подтверждение заказа №{basket.id}',
+            message=(
+                f'Здравствуйте!\n\n'
+                f'Ваш заказ №{basket.id} успешно создан.\n\n'
+                f'Состав заказа:\n'
+                f'{items_text}\n\n'
+                f'Сумма заказа: {order_sum} руб.\n\n'
+                f'Адрес доставки: {delivery_address}\n'
+                f'Телефон: {contact.phone}\n'
+            ),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[request.user.email]
+        )
+
+        send_email.delay(
+            subject=f'Новый заказ №{basket.id}',
+            message=(
+                f'Создан новый заказ №{basket.id}.\n\n'
+                f'Клиент: {request.user.email}\n'
+                f'Телефон: {contact.phone}\n'
+                f'Адрес доставки: {delivery_address}\n\n'
+                f'Состав заказа:\n'
+                f'{items_text}\n\n'
+                f'Сумма заказа: {order_sum} руб.'
+            ),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[settings.ADMIN_EMAIL]
+        )
+
         return Response(
             {
                 'message': 'Заказ подтвержден',
                 'order_id': basket.id,
                 'status': basket.status,
                 'sum': order_sum,
+            },
+            status=status.HTTP_200_OK
+        )
+
+
+class OrderDetailView(APIView):
+    """
+    Возвращает детальную информацию о заказе пользователя.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, order_id):
+        """
+        Показывает оформленный заказ текущего пользователя.
+        """
+        try:
+            order = Order.objects.exclude(
+                status='basket'
+            ).select_related(
+                'contact'
+            ).prefetch_related(
+                'items',
+                'items__product_info',
+                'items__product_info__product',
+                'items__product_info__shop'
+            ).get(
+                id=order_id,
+                user=request.user
+            )
+        except Order.DoesNotExist:
+            return Response(
+                {'error': 'Заказ не найден'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = OrderSerializer(order)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class OrderStatusView(APIView):
+    """
+    Изменяет статус заказа поставщиком.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, order_id):
+        """
+        Обновляет статус заказа, если в нем есть товары поставщика.
+        """
+        if request.user.user_type != 'shop':
+            return Response(
+                {'error': 'Только поставщик может менять статус заказа'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        try:
+            shop = request.user.shop
+        except Shop.DoesNotExist:
+            return Response(
+                {'error': 'Магазин поставщика не найден'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        try:
+            order = Order.objects.filter(
+                items__product_info__shop=shop
+            ).exclude(
+                status='basket'
+            ).distinct().get(id=order_id)
+        except Order.DoesNotExist:
+            return Response(
+                {'error': 'Заказ не найден'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = OrderStatusSerializer(data=request.data)
+
+        if not serializer.is_valid():
+            return Response(
+                serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        order.status = serializer.validated_data['status']
+        order.save(update_fields=['status'])
+
+        return Response(
+            {
+                'message': 'Статус заказа обновлен',
+                'order_id': order.id,
+                'status': order.status,
             },
             status=status.HTTP_200_OK
         )

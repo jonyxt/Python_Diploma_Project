@@ -428,6 +428,22 @@ class OrderCreateSerializer(serializers.Serializer):
         return attrs
 
 
+class OrderStatusSerializer(serializers.Serializer):
+    """
+    Проверяет новый статус заказа.
+    """
+
+    status = serializers.ChoiceField(
+        choices=[
+            Order.Status.CONFIRMED,
+            Order.Status.ASSEMBLED,
+            Order.Status.SENT,
+            Order.Status.COMPLETED,
+            Order.Status.CANCELED,
+        ]
+    )
+
+
 class OrderItemSerializer(serializers.ModelSerializer):
     """
     Сериализует позицию оформленного заказа.
