@@ -1,5 +1,3 @@
-# backend/tests/test_tasks.py
-
 import pytest
 
 from orders.tasks import do_import, send_email
@@ -7,11 +5,14 @@ from orders.tasks import do_import, send_email
 
 @pytest.mark.django_db
 def test_do_import_task_calls_import_service(mocker, supplier):
-    mocked_import = mocker.patch("orders.tasks.import_products_from_yaml")
+    mocked_import = mocker.patch("orders.tasks.import_products_from_yaml_text")
 
-    do_import("test.yaml", user_id=supplier.id)
+    do_import("shop: Test Shop", user_id=supplier.id)
 
-    mocked_import.assert_called_once_with("test.yaml", user=supplier)
+    mocked_import.assert_called_once_with(
+        yaml_text="shop: Test Shop",
+        user=supplier,
+    )
 
 
 @pytest.mark.django_db

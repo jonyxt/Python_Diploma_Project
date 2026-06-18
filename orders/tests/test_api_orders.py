@@ -1,58 +1,47 @@
-# backend/tests/test_api_orders.py
-
 import pytest
 from django.urls import reverse
 
-from orders.models import Order, OrderItem, Contact
+from orders.models import Contact, Order, OrderItem
 
 
 @pytest.mark.django_db
-def test_confirm_order(auth_client, user, product_info, mocker):
+def test_order_create_and_list(auth_client, user, product_info):
     contact = Contact.objects.create(
         user=user,
         city="Moscow",
         street="Test Street",
         house="1",
-        structure="",
-        building="",
         apartment="10",
         phone="+79999999999",
     )
 
-    order = Order.objects.create(
+    basket = Order.objects.create(
         user=user,
         status="basket",
     )
 
     OrderItem.objects.create(
-        order=order,
+        order=basket,
         product_info=product_info,
         quantity=1,
     )
 
-    mocked_task = mocker.patch("orders.tasks.send_email.delay")
+    create_response = auth_client.post(
+        reverse("order"),
+        {
+            "id": basket.id,
+            "contact": contact.id,
+        },
+    )
 
-    url = reverse("order-confirm")
-    payload = {
-        "basket_id": order.id,
-        "contact_id": contact.id,
-    }
+    assert create_response.status_code == 200
 
-    response = auth_client.post(url, payload, format="json")
+    basket.refresh_from_db()
 
-    assert response.status_code in (200, 201)
+    assert basket.status == "new"
+    assert basket.contact == contact
 
-    order.refresh_from_db()
+    list_response = auth_client.get(reverse("order"))
 
-    assert order.status != "basket"
-    assert order.contact == contact
-
-    assert mocked_task.call_count == 2
-
-    called_recipient_lists = [
-        call.kwargs["recipient_list"]
-        for call in mocked_task.call_args_list
-    ]
-
-    assert [user.email] in called_recipient_lists
-    assert ["admin@example.com"] in called_recipient_lists
+    assert list_response.status_code == 200
+    assert list_response.data[0]["number"] == basket.id

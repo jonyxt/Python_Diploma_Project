@@ -13,7 +13,7 @@ def api_client():
 
 @pytest.fixture
 def user(db):
-    return User.objects.create_user(
+    user = User.objects.create_user(
         email="client@example.com",
         password="testpass123",
         first_name="Client",
@@ -22,11 +22,14 @@ def user(db):
         position="Buyer",
         user_type="buyer",
     )
+    user.is_active = True
+    user.save(update_fields=["is_active"])
+    return user
 
 
 @pytest.fixture
 def supplier(db):
-    return User.objects.create_user(
+    supplier = User.objects.create_user(
         email="supplier@example.com",
         password="testpass123",
         first_name="Supplier",
@@ -35,6 +38,9 @@ def supplier(db):
         position="Manager",
         user_type="shop",
     )
+    supplier.is_active = True
+    supplier.save(update_fields=["is_active"])
+    return supplier
 
 
 @pytest.fixture

@@ -1,87 +1,35 @@
-# backend/tests/conftest.py
-
 import pytest
-from rest_framework.test import APIClient
 
-from orders.models import User, Shop, Category, Product, ProductInfo
-
-
-@pytest.fixture
-def api_client():
-    return APIClient()
+from orders.models import Contact, Order, OrderItem
 
 
-@pytest.fixture
-def user(db):
-    return User.objects.create_user(
-        email="client@example.com",
-        password="testpass123",
-        first_name="Client",
-        last_name="User",
-        company="Test Company",
-        position="Buyer",
-        type="buyer",
+@pytest.mark.django_db
+def test_model_string_representations(user, shop, category, product, product_info):
+    contact = Contact.objects.create(
+        user=user,
+        phone="+79999999999",
+        city="Moscow",
+        street="Test Street",
+        house="1",
     )
 
-
-@pytest.fixture
-def supplier(db):
-    return User.objects.create_user(
-        email="supplier@example.com",
-        password="testpass123",
-        first_name="Supplier",
-        last_name="User",
-        company="Supplier Company",
-        position="Manager",
-        type="shop",
+    order = Order.objects.create(
+        user=user,
+        contact=contact,
+        status="new",
     )
 
-
-@pytest.fixture
-def auth_client(api_client, user):
-    api_client.force_authenticate(user=user)
-    return api_client
-
-
-@pytest.fixture
-def supplier_client(api_client, supplier):
-    api_client.force_authenticate(user=supplier)
-    return api_client
-
-
-@pytest.fixture
-def shop(db, supplier):
-    return Shop.objects.create(
-        name="Test Shop",
-        user=supplier,
-        state=True,
+    item = OrderItem.objects.create(
+        order=order,
+        product_info=product_info,
+        quantity=2,
     )
 
-
-@pytest.fixture
-def category(db):
-    return Category.objects.create(
-        name="Smartphones",
-    )
-
-
-@pytest.fixture
-def product(db, category):
-    product = Product.objects.create(
-        name="iPhone 15",
-        category=category,
-    )
-    return product
-
-
-@pytest.fixture
-def product_info(db, shop, product):
-    return ProductInfo.objects.create(
-        product=product,
-        shop=shop,
-        external_id=1001,
-        model="A3090",
-        price=100000,
-        price_rrc=120000,
-        quantity=10,
-    )
+    assert str(user) == user.email
+    assert str(shop) == shop.name
+    assert str(category) == category.name
+    assert str(product) == product.name
+    assert product_info.model in str(product_info)
+    assert "Moscow" in str(contact)
+    assert f"#{order.id}" in str(order)
+    assert product_info.model in str(item)

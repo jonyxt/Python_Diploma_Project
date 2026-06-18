@@ -52,6 +52,7 @@ class UserManager(BaseUserManager):
 
         return self._create_user(email, password, **extra_fields)
 
+
 class User(AbstractUser):
     """
     Пользователь сервиса.
@@ -403,6 +404,7 @@ class Contact(models.Model):
     def __str__(self):
         return f'{self.city} {self.street} {self.house}'
 
+
 class Order(models.Model):
     """
     Заказ покупателя.
@@ -451,7 +453,9 @@ class Order(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"Заказ #{self.id} от {self.created_at.strftime('%Y-%m-%d %H:%M:%S')} ({self.get_status_display()})"
+        return (f"Заказ #{self.id} от "
+                f"{self.created_at.strftime('%Y-%m-%d %H:%M:%S')} "
+                f"({self.get_status_display()})")
 
 
 class OrderItem(models.Model):

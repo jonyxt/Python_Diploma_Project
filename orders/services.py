@@ -1,4 +1,5 @@
 import yaml
+
 from django.db import transaction
 from pathlib import Path
 
@@ -13,11 +14,9 @@ from orders.models import (
 
 def read_yaml_file(file_obj):
     """
-    Читает YAML-файл и возвращает текст.
-    Поддерживает:
-    - Django UploadedFile из админки/API;
-    - pathlib.Path;
-    - обычный путь строкой.
+    Читает YAML-файл и возвращает его содержимое строкой.
+
+    Поддерживает путь к файлу, pathlib.Path и Django UploadedFile.
     """
     try:
         if isinstance(file_obj, (str, Path)):
@@ -37,7 +36,10 @@ def read_yaml_file(file_obj):
 @transaction.atomic
 def import_products_from_yaml_text(yaml_text, user=None):
     """
-    Импорт товаров из YAML-текста.
+    Импортирует товары поставщика из YAML-текста.
+
+    Создает или обновляет магазин, категории, товары, товарные
+    позиции и характеристики.
     """
 
     try:
@@ -145,5 +147,8 @@ def import_products_from_yaml_text(yaml_text, user=None):
     }
 
 def import_products_from_yaml(file_obj, user=None):
+    """
+    Читает YAML-файл и импортирует товары поставщика.
+    """
     yaml_text = read_yaml_file(file_obj)
     return import_products_from_yaml_text(yaml_text=yaml_text, user=user)
