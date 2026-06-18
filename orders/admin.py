@@ -30,6 +30,10 @@ admin.site.index_title = 'Панель управления закупками'
 
 
 class AdminImportForm(forms.Form):
+    """
+    Форма загрузки YAML-прайса поставщика через админку.
+    """
+
     supplier = forms.ModelChoiceField(
         queryset=User.objects.filter(user_type='shop'),
         label='Поставщик'
@@ -40,10 +44,17 @@ class AdminImportForm(forms.Form):
 
 
 class LowStockFilter(admin.SimpleListFilter):
+    """
+    Фильтр товарных позиций по остатку на складе.
+    """
+
     title = 'Остаток на складе'
     parameter_name = 'stock'
 
     def lookups(self, request, model_admin):
+        """
+        Возвращает варианты фильтра по количеству товара.
+        """
         return (
             ('empty', 'Нет в наличии'),
             ('low', 'Мало: 1-5'),
@@ -51,6 +62,9 @@ class LowStockFilter(admin.SimpleListFilter):
         )
 
     def queryset(self, request, queryset):
+        """
+        Фильтрует товарные позиции по выбранному уровню остатка.
+        """
         if self.value() == 'empty':
             return queryset.filter(quantity=0)
 
@@ -62,7 +76,12 @@ class LowStockFilter(admin.SimpleListFilter):
 
         return queryset
 
+
 class ContactInline(admin.TabularInline):
+    """
+    Встроенное отображение контактов пользователя.
+    """
+
     model = Contact
     extra = 0
     fields = (
@@ -79,6 +98,10 @@ class ContactInline(admin.TabularInline):
 
 @admin.register(User)
 class CustomUserAdmin(UserAdmin):
+    """
+    Настройки отображения пользовательской модели в админке.
+    """
+
     model = User
     list_display = (
         'id',
@@ -182,6 +205,10 @@ class CustomUserAdmin(UserAdmin):
 
 @admin.register(Shop)
 class ShopAdmin(admin.ModelAdmin):
+    """
+    Управление магазинами поставщиков.
+    """
+
     list_display = (
         'id',
         'name',
@@ -213,19 +240,32 @@ class ShopAdmin(admin.ModelAdmin):
 
     @admin.display(description='Товарных позиций')
     def products_count(self, obj):
+        """
+        Возвращает количество товарных позиций магазина.
+        """
         return obj.products_info.count()
 
     @admin.action(description='Включить приём заказов')
     def activate_shops(self, request, queryset):
+        """
+        Включает прием заказов для выбранных магазинов.
+        """
         queryset.update(is_active=True)
 
     @admin.action(description='Отключить приём заказов')
     def deactivate_shops(self, request, queryset):
+        """
+        Отключает прием заказов для выбранных магазинов.
+        """
         queryset.update(is_active=False)
 
 
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
+    """
+    Управление категориями товаров.
+    """
+
     list_display = (
         'id',
         'name',
@@ -242,11 +282,18 @@ class CategoryAdmin(admin.ModelAdmin):
 
     @admin.display(description='Товаров')
     def products_count(self, obj):
+        """
+        Возвращает количество товаров в категории.
+        """
         return obj.products.count()
 
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
+    """
+    Управление общими карточками товаров.
+    """
+
     list_display = (
         'id',
         'name',
@@ -269,10 +316,17 @@ class ProductAdmin(admin.ModelAdmin):
 
     @admin.display(description='Предложений поставщиков')
     def offers_count(self, obj):
+        """
+        Возвращает количество предложений поставщиков по товару.
+        """
         return obj.info.count()
 
 
 class ProductParameterInline(admin.TabularInline):
+    """
+    Встроенное редактирование характеристик товарной позиции.
+    """
+
     model = ProductParameter
     extra = 0
     autocomplete_fields = (
@@ -286,6 +340,10 @@ class ProductParameterInline(admin.TabularInline):
 
 @admin.register(ProductInfo)
 class ProductInfoAdmin(admin.ModelAdmin):
+    """
+    Управление товарными позициями магазинов.
+    """
+
     list_display = (
         'id',
         'model',
@@ -360,6 +418,9 @@ class ProductInfoAdmin(admin.ModelAdmin):
     change_list_template = 'admin/orders/productinfo/change_list.html'
 
     def get_urls(self):
+        """
+        Добавляет custom URL для импорта YAML через админку.
+        """
         urls = super().get_urls()
 
         custom_urls = [
@@ -373,6 +434,9 @@ class ProductInfoAdmin(admin.ModelAdmin):
         return custom_urls + urls
 
     def import_yaml_view(self, request):
+        """
+        Обрабатывает загрузку YAML-файла поставщика через админку.
+        """
         if request.method == 'POST':
             form = AdminImportForm(request.POST, request.FILES)
 
@@ -424,10 +488,16 @@ class ProductInfoAdmin(admin.ModelAdmin):
 
     @admin.display(description='Категория')
     def get_category(self, obj):
+        """
+        Возвращает категорию товара.
+        """
         return obj.product.category
 
     @admin.display(description='Статус склада')
     def stock_status(self, obj):
+        """
+        Возвращает HTML-индикатор остатка на складе.
+        """
         if obj.quantity == 0:
             return format_html('<b style="color: red;">Нет в наличии</b>')
 
@@ -439,6 +509,10 @@ class ProductInfoAdmin(admin.ModelAdmin):
 
 @admin.register(Parameter)
 class ParameterAdmin(admin.ModelAdmin):
+    """
+    Управление справочником характеристик товаров.
+    """
+
     list_display = (
         'id',
         'name',
@@ -451,6 +525,10 @@ class ParameterAdmin(admin.ModelAdmin):
 
 @admin.register(ProductParameter)
 class ProductParameterAdmin(admin.ModelAdmin):
+    """
+    Управление значениями характеристик товарных позиций.
+    """
+
     list_display = (
         'id',
         'product_info',
@@ -481,6 +559,10 @@ class ProductParameterAdmin(admin.ModelAdmin):
 
 
 class OrderItemInline(admin.TabularInline):
+    """
+    Встроенное отображение товаров внутри заказа.
+    """
+
     model = OrderItem
     extra = 0
     autocomplete_fields = (
@@ -499,12 +581,18 @@ class OrderItemInline(admin.TabularInline):
 
     @admin.display(description='Магазин')
     def get_shop(self, obj):
+        """
+        Возвращает магазин товарной позиции.
+        """
         if obj.product_info_id:
             return obj.product_info.shop
         return '-'
 
     @admin.display(description='Сумма позиции')
     def item_sum(self, obj):
+        """
+        Возвращает стоимость позиции заказа.
+        """
         if obj.product_info_id:
             return obj.product_info.price * obj.quantity
         return 0
@@ -512,6 +600,10 @@ class OrderItemInline(admin.TabularInline):
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
+    """
+    Управление заказами пользователей.
+    """
+
     list_display = (
         'id',
         'user',
@@ -585,10 +677,16 @@ class OrderAdmin(admin.ModelAdmin):
 
     @admin.display(description='Позиций')
     def items_count(self, obj):
+        """
+        Возвращает количество позиций в заказе.
+        """
         return obj.items.count()
 
     @admin.display(description='Сумма заказа')
     def order_sum(self, obj):
+        """
+        Возвращает итоговую сумму заказа.
+        """
         return sum(
             item.product_info.price * item.quantity
             for item in obj.items.select_related('product_info')
@@ -596,27 +694,46 @@ class OrderAdmin(admin.ModelAdmin):
 
     @admin.action(description='Перевести в статус: Подтверждён')
     def mark_confirmed(self, request, queryset):
+        """
+        Переводит выбранные заказы в статус confirmed.
+        """
         queryset.update(status=Order.Status.CONFIRMED)
 
     @admin.action(description='Перевести в статус: Собран')
     def mark_assembled(self, request, queryset):
+        """
+        Переводит выбранные заказы в статус assembled.
+        """
         queryset.update(status=Order.Status.ASSEMBLED)
 
     @admin.action(description='Перевести в статус: Отправлен')
     def mark_sent(self, request, queryset):
+        """
+        Переводит выбранные заказы в статус sent.
+        """
         queryset.update(status=Order.Status.SENT)
 
     @admin.action(description='Перевести в статус: Завершён')
     def mark_completed(self, request, queryset):
+        """
+        Переводит выбранные заказы в статус completed.
+        """
         queryset.update(status=Order.Status.COMPLETED)
 
     @admin.action(description='Перевести в статус: Отменён')
     def mark_canceled(self, request, queryset):
+        """
+        Переводит выбранные заказы в статус canceled.
+        """
         queryset.update(status=Order.Status.CANCELED)
 
 
 @admin.register(OrderItem)
 class OrderItemAdmin(admin.ModelAdmin):
+    """
+    Управление отдельными позициями заказов.
+    """
+
     list_display = (
         'id',
         'order',
@@ -653,15 +770,25 @@ class OrderItemAdmin(admin.ModelAdmin):
 
     @admin.display(description='Магазин')
     def get_shop(self, obj):
+        """
+        Возвращает магазин товарной позиции.
+        """
         return obj.product_info.shop
 
     @admin.display(description='Сумма позиций')
     def item_sum(self, obj):
+        """
+        Возвращает стоимость позиции заказа.
+        """
         return obj.product_info.price * obj.quantity
 
 
 @admin.register(Contact)
 class ContactAdmin(admin.ModelAdmin):
+    """
+    Управление контактными данными пользователей.
+    """
+
     list_display = (
         'id',
         'user',

@@ -153,6 +153,8 @@ url=https://raw.githubusercontent.com/netology-code/python-final-diplom/master/d
 
 Импорт запускается через Celery. Статус выполнения смотрите в логах `celery`.
 
+Также импорт YAML доступен через Django Admin на странице товарных позиций. Для этого используются кастомные admin-шаблоны: `orders/templates/admin/orders/productinfo/change_list.html` и `orders/templates/admin/orders/productinfo/import_yaml.html`.
+
 ## Тесты
 
 Запуск тестов:
@@ -193,6 +195,7 @@ orders/serializers.py serializers для API
 orders/views.py      API views
 orders/services.py   импорт товаров из YAML
 orders/tasks.py      Celery-задачи
+orders/templates/    кастомные шаблоны Django Admin для импорта YAML
 orders/tests/        тесты
 import_data/         пример YAML-файла
 ```
